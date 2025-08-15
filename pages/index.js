@@ -142,7 +142,17 @@ export default function Home(){
     <div className="container">
       {/* Header */}
       <div className="header">
-        <h1 className="brand">Superfan</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+  <img
+    src="/superfan-icon-light-64.png?v=2"
+    alt="Superfan"
+    width="32"
+    height="32"
+    style={{ display: 'inline-block', verticalAlign: 'middle' }}
+  />
+  <span style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Superfan</span>
+</div>
+
         <div>
           {connected
             ? <span className="badge">Spotify Connected</span>
