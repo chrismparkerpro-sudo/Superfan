@@ -1,9 +1,16 @@
+// pages/api/similar-events.js
 import cookie from 'cookie';
 
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).end();
-    const { seeds = [], city = 'Chicago' } = req.body || {};
+    const {
+      seeds = [],
+      lat = null,
+      lon = null,
+      radius = 25,
+      locationText = ''
+    } = req.body || {};
 
     const token = cookie.parse(req.headers.cookie || '').sf_access;
     if (!token) return res.status(401).json({ error: 'not_authed' });
@@ -35,16 +42,31 @@ export default async function handler(req, res) {
     const similar = Array.from(similarMap.values()).slice(0, 60);
 
     // 2) Ticketmaster search for similar artists
+    const buildParams = (keyword) => {
+      const p = new URLSearchParams({
+        apikey: tmKey,
+        classificationName: 'music',
+        keyword,
+        sort: 'date,asc',
+        size: '10',
+      });
+      if (lat != null && lon != null) {
+        p.set('latlong', `${lat},${lon}`);
+        p.set('radius', String(Math.max(1, Number(radius) || 25)));
+        p.set('unit', 'miles');
+      } else if (locationText && /\d{5}/.test(locationText)) {
+        p.set('postalCode', locationText.trim());
+        p.set('radius', String(Math.max(1, Number(radius) || 25)));
+        p.set('unit', 'miles');
+      } else if (locationText) {
+        p.set('city', locationText.trim());
+      }
+      return p;
+    };
+
     const eventsMap = new Map();
     for (const a of similar) {
-      const params = new URLSearchParams({
-        apikey: tmKey,
-        city,
-        classificationName: 'music',
-        keyword: a.name,
-        sort: 'date,asc',
-        size: '10'
-      });
+      const params = buildParams(a.name);
       const url = `https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`;
       const r = await fetch(url);
       if (!r.ok) continue;
@@ -65,7 +87,7 @@ export default async function handler(req, res) {
             a.name,
           date,
           venue: ev._embedded?.venues?.[0]?.name || 'TBA',
-          city: ev._embedded?.venues?.[0]?.city?.name || city,
+          city: ev._embedded?.venues?.[0]?.city?.name || '',
           url: ev.url || '#',
         });
       }
