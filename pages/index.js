@@ -18,10 +18,13 @@ export default function Home(){
   const [city, setCity] = useState('Chicago')
   const [source, setSource] = useState('followed') // followed | top_artists | top_tracks
   const [timeRange, setTimeRange] = useState('medium_term')
+  const [includeSimilar, setIncludeSimilar] = useState(false)
+
   const [artists, setArtists] = useState([])
   const [events, setEvents] = useState([])
-  const [loading, setLoading] = useState(false)     // load artists
-  const [searching, setSearching] = useState(false) // search events
+  const [recommended, setRecommended] = useState([])
+
+  const [busy, setBusy] = useState(false) // unified spinner
   const [error, setError] = useState('')
 
   useEffect(()=>{
@@ -33,92 +36,64 @@ export default function Home(){
 
   const connectSpotify = () => window.location.href = '/api/login'
 
-  const loadFollowedArtists = async () => {
-    setLoading(true); setError('')
-    try{
-      const r = await fetch('/api/followed')
-      if(r.status === 401){
-        setError('Please connect Spotify first.')
-        setLoading(false)
-        return
-      }
-      const data = await r.json()
-      setArtists((data.items || []).slice(0,100))
-    }catch(e){
-      setError('Could not load followed artists.')
-    }
-    setLoading(false)
+  const loadArtistsForSource = async () => {
+    const endpoint =
+      source === 'followed'
+        ? '/api/followed'
+        : `/api/top?type=${source === 'top_artists' ? 'artists' : 'tracks'}&time_range=${timeRange}&limit=50`
+
+    const r = await fetch(endpoint)
+    if (r.status === 401) throw new Error('Please connect Spotify first.')
+    const data = await r.json()
+    return (data.items || []).slice(0, 100)
   }
 
-  const loadTop = async (which) => {
-    setLoading(true); setError('')
-    try{
-      const r = await fetch(`/api/top?type=${which}&time_range=${timeRange}&limit=50`)
-      if(r.status === 401){
-        setError('Please connect Spotify first.')
-        setLoading(false)
-        return
-      }
-      const data = await r.json()
-      setArtists((data.items || []).slice(0,100))
-    }catch(e){
-      setError('Could not load top data.')
-    }
-    setLoading(false)
-  }
-
-  const primeArtistsForSearch = async () => {
-    // Ensure we have artists for the selected source
-    if (artists.length > 0) return artists
-
-    if (source === 'followed') {
-      await loadFollowedArtists()
-      return artists
-    }
-    if (source === 'top_artists') {
-      await loadTop('artists')
-      return artists
-    }
-    if (source === 'top_tracks') {
-      await loadTop('tracks')
-      return artists
-    }
-    return artists
-  }
-
-  const findShows = async () => {
+  const oneClickFind = async () => {
     try {
-      setSearching(true)
+      setBusy(true)
       setError('')
+      setEvents([])
+      setRecommended([])
 
-      // Ensure artists list is populated for selected source
+      // 1) ensure artists for current source
       let current = artists
       if (current.length === 0) {
-        await primeArtistsForSearch()
-        current = artists
+        current = await loadArtistsForSource()
+        setArtists(current) // cache for preview
       }
-      if (current.length === 0) {
-        setError('No artists available. Load artists first.')
-        return
-      }
+      if (current.length === 0) throw new Error('No artists available.')
 
-      const res = await fetch('/api/events', {
+      // 2) Ticketmaster search for current artists
+      const baseRes = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({ names: current.map(a => a.name), city })
       })
-      const out = await res.json()
-      if(out.error){
-        setError(out.error)
-        setEvents([])
-      } else {
-        setEvents(out.events || [])
+      const baseOut = await baseRes.json()
+      if (baseOut.error) throw new Error(baseOut.error)
+      let finalEvents = baseOut.events || []
+
+      // 3) optionally include similar artists
+      if (includeSimilar) {
+        const simRes = await fetch('/api/similar-events', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ seeds: current.map(a => ({ id: a.id, name: a.name })), city })
+        })
+        const simOut = await simRes.json()
+        if (!simOut.error) {
+          setRecommended(simOut.similar || [])
+          const byId = new Map()
+          ;[...finalEvents, ...(simOut.events || [])].forEach(ev => byId.set(ev.id, ev))
+          finalEvents = Array.from(byId.values())
+        }
       }
+
+      setEvents(finalEvents)
     } catch (e) {
-      setError('Show search failed.')
-      setEvents([])
+      setError(e.message || 'Show search failed.')
     } finally {
-      setSearching(false)
+      setBusy(false)
     }
   }
 
@@ -152,35 +127,29 @@ export default function Home(){
               {TIME_RANGES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           )}
-          <span className="small">
-            {source === 'followed'
-              ? 'Uses your followed artists.'
-              : 'Uses Spotify listening history (user-top-read).'}
-          </span>
+          <label className="small" style={{display:'flex', alignItems:'center', gap:8}}>
+            <input
+              type="checkbox"
+              checked={includeSimilar}
+              onChange={e=>setIncludeSimilar(e.target.checked)}
+            />
+            Include similar artists
+          </label>
         </div>
       </div>
 
       <div className="grid" style={{marginTop:16}}>
         <div className="card">
-          <h2>Load Artists</h2>
-          <p>
+          <h2>Action</h2>
+          <p className="small">
             {source === 'followed'
-              ? <>We’ll read your <strong>followed artists</strong> (scope: <code>user-follow-read</code>).</>
-              : <>We’ll read your <strong>top {source === 'top_artists' ? 'artists' : 'tracks'}</strong> for the selected period (scope: <code>user-top-read</code>).</>
+              ? <>We’ll use your <strong>followed artists</strong> (scope: <code>user-follow-read</code>).</>
+              : <>We’ll use your <strong>listening history</strong> (scope: <code>user-top-read</code>) to derive artists.</>
             }
           </p>
           <div className="row" style={{marginTop:8}}>
-            {source === 'followed' ? (
-              <button className="btn" onClick={loadFollowedArtists} disabled={loading}>
-                {loading ? 'Loading…' : 'Load Followed Artists'}
-              </button>
-            ) : (
-              <button className="btn" onClick={()=>loadTop(source === 'top_artists' ? 'artists' : 'tracks')} disabled={loading}>
-                {loading ? 'Loading…' : `Load ${source === 'top_artists' ? 'Top Artists' : 'Top Tracks'}`}
-              </button>
-            )}
-            <button className="btn" onClick={findShows} disabled={searching}>
-              {searching ? 'Searching…' : `Find Shows in ${city}`}
+            <button className="btn" onClick={oneClickFind} disabled={busy}>
+              {busy ? 'Finding…' : `Find Shows in ${city}`}
             </button>
           </div>
         </div>
@@ -188,19 +157,32 @@ export default function Home(){
         <div className="card">
           <h2>Selected Artists (preview)</h2>
           {artists.length === 0
-            ? <p className="small">No artists loaded yet.</p>
+            ? <p className="small">No artists loaded yet (they’ll load automatically when you search).</p>
             : (
               <ul className="clean">
-  {artists.map(a => (
-    <li className="item" key={a.id || a.name}>
-      {a.image ? <img className="avatar" src={a.image} alt={a.name} /> : null}
-      {a.name}
-    </li>
-  ))}
-</ul>
-
+                {artists.map(a => (
+                  <li className="item" key={a.id || a.name}>
+                    {a.image ? <img className="avatar" src={a.image} alt={a.name} /> : null}
+                    {a.name}
+                  </li>
+                ))}
+              </ul>
             )
           }
+
+          {recommended.length > 0 && (
+            <>
+              <h2 style={{marginTop:16}}>Recommended Similar Artists</h2>
+              <ul className="clean">
+                {recommended.map(a => (
+                  <li className="item" key={a.id || a.name}>
+                    {a.image ? <img className="avatar" src={a.image} alt={a.name} /> : null}
+                    {a.name}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       </div>
 
