@@ -1,3 +1,4 @@
+// pages/api/followed.js
 import cookie from 'cookie';
 
 export default async function handler(req, res) {
@@ -6,7 +7,6 @@ export default async function handler(req, res) {
     const token = cookies.sf_access;
     if (!token) return res.status(401).json({ error: 'not_authed' });
 
-    // fetch followed artists, paging up to ~200
     let url = 'https://api.spotify.com/v1/me/following?type=artist&limit=50';
     const items = [];
     while (url && items.length < 200) {
@@ -16,7 +16,13 @@ export default async function handler(req, res) {
         throw new Error(`spotify following fetch failed: ${r.status} ${text}`);
       }
       const data = await r.json();
-      (data?.artists?.items || []).forEach(a => items.push({ id: a.id, name: a.name }));
+      for (const a of (data?.artists?.items || [])) {
+        items.push({
+          id: a.id,
+          name: a.name,
+          image: a.images?.[0]?.url || null,
+        });
+      }
       url = data?.artists?.next || null;
     }
 
