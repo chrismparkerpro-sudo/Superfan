@@ -1,4 +1,3 @@
-// pages/api/top.js
 import cookie from 'cookie';
 
 const VALID_TYPE = new Set(['artists', 'tracks']);
@@ -34,13 +33,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ items });
     }
 
-    // type === 'tracks' → collect primary artist IDs then batch fetch /v1/artists
+    // type === 'tracks' → dedupe primary artist IDs → batch fetch their images
     const idSet = new Set();
     for (const t of (data.items || [])) {
       const primary = t?.artists?.[0];
       if (primary?.id) idSet.add(primary.id);
     }
-    const ids = Array.from(idSet).slice(0, 100); // safety cap
+    const ids = Array.from(idSet).slice(0, 100);
 
     const chunks = [];
     for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
