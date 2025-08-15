@@ -1,5 +1,6 @@
-const { parseCookies } = require('../../lib/cookies')
-module.exports = function handler(req,res){
-  const cookies = parseCookies(req)
-  res.status(200).json({ spotifyConnected: Boolean(cookies.sf_access) })
+import cookie from 'cookie';
+
+export default function handler(req, res) {
+  const cookies = cookie.parse(req.headers.cookie || '');
+  res.status(200).json({ spotifyConnected: Boolean(cookies.sf_access) });
 }
