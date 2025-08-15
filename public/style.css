@@ -78,3 +78,12 @@ code{ background:#101218; padding:2px 6px; border-radius:6px; border:1px solid v
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { padding: 10px; border-top: 1px solid var(--border); text-align: left; }
 .table th { color: #ddd; font-weight: 600; }
+.brand{
+  font-size: 34px;
+  letter-spacing: .4px;
+  background: linear-gradient(90deg,#1db954,#7c5cff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+}
