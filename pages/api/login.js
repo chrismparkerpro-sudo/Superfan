@@ -1,4 +1,4 @@
-module.exports = function handler(req, res){
+export default function handler(req, res) {
   try {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
     const redirectUri = process.env.SPOTIFY_REDIRECT_URI;
@@ -18,7 +18,7 @@ module.exports = function handler(req, res){
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
-      redirect_uri: redirectUri,
+      redirect_uri: redirectUri, // must exactly match Spotify app settings
       scope: 'user-follow-read',
       state: Math.random().toString(36).slice(2),
       show_dialog: 'true',
@@ -28,6 +28,6 @@ module.exports = function handler(req, res){
     return res.redirect(url);
   } catch (e) {
     console.error('Login redirect error:', e);
-    return res.status(500).json({ ok:false, where:'login', message: String(e) });
+    return res.status(500).json({ ok: false, where: 'login', message: String(e) });
   }
 }
