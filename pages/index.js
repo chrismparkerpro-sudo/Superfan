@@ -191,8 +191,14 @@ export default function Home(){
             ? <p className="small">No artists loaded yet.</p>
             : (
               <ul className="clean">
-                {artists.map(a => <li className="item" key={a.id || a.name}>{a.name}</li>)}
-              </ul>
+  {artists.map(a => (
+    <li className="item" key={a.id || a.name}>
+      {a.image ? <img className="avatar" src={a.image} alt={a.name} /> : null}
+      {a.name}
+    </li>
+  ))}
+</ul>
+
             )
           }
         </div>
