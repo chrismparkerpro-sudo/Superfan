@@ -1,12 +1,6 @@
 // pages/index.js
 import { useEffect, useState } from 'react'
 
-const CITIES = [
-  'Chicago','New York','Los Angeles','Austin','Nashville',
-  'Seattle','San Francisco','Denver','Atlanta','Miami',
-  'Boston','Philadelphia','Dallas','Phoenix','Portland'
-]
-
 const TIME_RANGES = [
   { label: 'Last 4 weeks', value: 'short_term' },
   { label: 'Last 6 months', value: 'medium_term' },
@@ -15,16 +9,25 @@ const TIME_RANGES = [
 
 export default function Home(){
   const [connected, setConnected] = useState(false)
-  const [city, setCity] = useState('Chicago')
+
+  // Location inputs
+  const [locationText, setLocationText] = useState('Chicago, IL') // free text (city, postal code, etc.)
+  const [radius, setRadius] = useState(25) // miles
+  const [coords, setCoords] = useState(null) // { lat, lon } when using current location
+
+  // Source + options
   const [source, setSource] = useState('followed') // followed | top_artists | top_tracks
   const [timeRange, setTimeRange] = useState('medium_term')
   const [includeSimilar, setIncludeSimilar] = useState(false)
 
+  // Data
   const [artists, setArtists] = useState([])
   const [events, setEvents] = useState([])
   const [recommended, setRecommended] = useState([])
 
-  const [busy, setBusy] = useState(false) // unified spinner
+  // UI state
+  const [busy, setBusy] = useState(false)
+  const [locBusy, setLocBusy] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(()=>{
@@ -35,6 +38,28 @@ export default function Home(){
   }, [])
 
   const connectSpotify = () => window.location.href = '/api/login'
+
+  // Get current browser location
+  const useCurrentLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setError('Geolocation is not supported by your browser.')
+      return
+    }
+    setLocBusy(true)
+    setError('')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords
+        setCoords({ lat: Number(latitude.toFixed(6)), lon: Number(longitude.toFixed(6)) })
+        setLocBusy(false)
+      },
+      (err) => {
+        setLocBusy(false)
+        setError(`Could not get current location: ${err.message}`)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    )
+  }
 
   const loadArtistsForSource = async () => {
     const endpoint =
@@ -59,15 +84,20 @@ export default function Home(){
       let current = artists
       if (current.length === 0) {
         current = await loadArtistsForSource()
-        setArtists(current) // cache for preview
+        setArtists(current)
       }
       if (current.length === 0) throw new Error('No artists available.')
+
+      // Build location payload: prefer coords if set; else use text
+      const locationPayload = coords
+        ? { lat: coords.lat, lon: coords.lon, radius: Number(radius) || 25 }
+        : { locationText: locationText.trim(), radius: Number(radius) || 25 }
 
       // 2) Ticketmaster search for current artists
       const baseRes = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ names: current.map(a => a.name), city })
+        body: JSON.stringify({ names: current.map(a => a.name), ...locationPayload })
       })
       const baseOut = await baseRes.json()
       if (baseOut.error) throw new Error(baseOut.error)
@@ -78,7 +108,7 @@ export default function Home(){
         const simRes = await fetch('/api/similar-events', {
           method: 'POST',
           headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ seeds: current.map(a => ({ id: a.id, name: a.name })), city })
+          body: JSON.stringify({ seeds: current.map(a => ({ id: a.id, name: a.name })), ...locationPayload })
         })
         const simOut = await simRes.json()
         if (!simOut.error) {
@@ -109,13 +139,42 @@ export default function Home(){
       </div>
 
       <div className="card">
-        <h2>Location & Source</h2>
+        <h2>Location</h2>
         <div className="row" style={{marginBottom:8}}>
-          <select value={city} onChange={e=>setCity(e.target.value)}>
-            {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <span className="small">City for the event search.</span>
+          <input
+            className="input"
+            style={{minWidth:260}}
+            placeholder="City, State or Postal Code (e.g., Chicago, IL or 60607)"
+            value={locationText}
+            onChange={e=>setLocationText(e.target.value)}
+            disabled={!!coords}
+          />
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={250}
+            step={1}
+            style={{width:120}}
+            value={radius}
+            onChange={e=>setRadius(e.target.value)}
+            title="Search radius in miles"
+          />
+          <button className="btn secondary" onClick={useCurrentLocation} disabled={locBusy}>
+            {locBusy ? 'Locating…' : (coords ? 'Update My Location' : 'Use My Current Location')}
+          </button>
+          {coords && (
+            <span className="small">Using GPS: {coords.lat.toFixed(3)}, {coords.lon.toFixed(3)}</span>
+          )}
         </div>
+        <p className="small">
+          Tip: If you enable “Use My Current Location”, we’ll search within {radius} miles of your GPS position.
+          Otherwise we’ll search around your typed place.
+        </p>
+      </div>
+
+      <div className="card" style={{marginTop:16}}>
+        <h2>Source</h2>
         <div className="row">
           <select value={source} onChange={e=>setSource(e.target.value)}>
             <option value="followed">Followed Artists</option>
@@ -149,9 +208,10 @@ export default function Home(){
           </p>
           <div className="row" style={{marginTop:8}}>
             <button className="btn" onClick={oneClickFind} disabled={busy}>
-              {busy ? 'Finding…' : `Find Shows in ${city}`}
+              {busy ? 'Finding…' : `Find Shows`}
             </button>
           </div>
+          {error && <p className="small" style={{color:'#ff7b7b', marginTop:8}}>{error}</p>}
         </div>
 
         <div className="card">
@@ -188,7 +248,6 @@ export default function Home(){
 
       <div className="card" style={{marginTop:16}}>
         <h2>Results</h2>
-        {error && <p className="small" style={{color:'#ff7b7b'}}>{error}</p>}
         {events.length === 0 ? (
           <p className="small">No results yet.</p>
         ) : (
