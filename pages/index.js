@@ -10,10 +10,11 @@ const TIME_RANGES = [
 export default function Home(){
   const [connected, setConnected] = useState(false)
 
-  // Location inputs
+  // Location
   const [locationText, setLocationText] = useState('Chicago, IL')
   const [radius, setRadius] = useState(25)
   const [coords, setCoords] = useState(null) // { lat, lon }
+  const [locBusy, setLocBusy] = useState(false)
 
   // Source + options
   const [source, setSource] = useState('followed') // followed | top_artists | top_tracks
@@ -25,9 +26,8 @@ export default function Home(){
   const [events, setEvents] = useState([])
   const [recommended, setRecommended] = useState([])
 
-  // UI state
+  // UI
   const [busy, setBusy] = useState(false)
-  const [locBusy, setLocBusy] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(()=>{
@@ -39,16 +39,15 @@ export default function Home(){
 
   const connectSpotify = () => window.location.href = '/api/login'
 
-  // Utilities
+  // Helpers
   const monthShort = (n) => ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][n] || ''
   const parseDateParts = (s) => {
-    // expects "YYYY-MM-DD" or "YYYY-MM-DD HH:mm:ss"
     if (!s) return { mon:'', day:'', time:'' }
     const [d, t] = s.split(' ')
     const [y,m,dd] = d.split('-').map(x=>parseInt(x,10))
     const mon = isFinite(m) ? monthShort(m-1) : ''
     const day = dd || ''
-    const time = t ? t.slice(0,5) : '' // HH:mm
+    const time = t ? t.slice(0,5) : ''
     return { mon, day, time }
   }
   const getArtistImage = (name) => {
@@ -61,10 +60,7 @@ export default function Home(){
 
   // Geolocation
   const useCurrentLocation = () => {
-    if (!('geolocation' in navigator)) {
-      setError('Geolocation not supported by this browser.')
-      return
-    }
+    if (!('geolocation' in navigator)) { setError('Geolocation not supported.'); return }
     setLocBusy(true); setError('')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -89,7 +85,7 @@ export default function Home(){
     return (data.items || []).slice(0, 100)
   }
 
-  // Unified “one-click” search
+  // One‑click search
   const oneClickFind = async () => {
     try {
       setBusy(true)
@@ -97,7 +93,6 @@ export default function Home(){
       setEvents([])
       setRecommended([])
 
-      // 1) ensure artists for current source
       let current = artists
       if (current.length === 0) {
         current = await loadArtistsForSource()
@@ -105,12 +100,11 @@ export default function Home(){
       }
       if (current.length === 0) throw new Error('No artists available.')
 
-      // Build location payload
       const locationPayload = coords
         ? { lat: coords.lat, lon: coords.lon, radius: Number(radius) || 25 }
         : { locationText: locationText.trim(), radius: Number(radius) || 25 }
 
-      // 2) Ticketmaster for current artists
+      // Base events (Ticketmaster) for current artists
       const baseRes = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
@@ -120,7 +114,7 @@ export default function Home(){
       if (baseOut.error) throw new Error(baseOut.error)
       let finalEvents = baseOut.events || []
 
-      // 3) optionally include similar artists
+      // Optionally include similar
       if (includeSimilar) {
         const simRes = await fetch('/api/similar-events', {
           method: 'POST',
@@ -144,11 +138,11 @@ export default function Home(){
     }
   }
 
-  // --- UI ---
   return (
     <div className="container">
+      {/* Header */}
       <div className="header">
-        <h1>Superfan — Prototype</h1>
+        <h1 className="brand">Superfan</h1>
         <div>
           {connected
             ? <span className="badge">Spotify Connected</span>
@@ -156,41 +150,8 @@ export default function Home(){
         </div>
       </div>
 
-      {/* RESULTS FIRST */}
+      {/* LOCATION (top) */}
       <div className="card">
-        <h2>Results</h2>
-        {events.length === 0 ? (
-          <p className="small">No results yet. Use the controls below to search.</p>
-        ) : (
-          <div className="eventlist">
-            {events.map(ev => {
-              const { mon, day, time } = parseDateParts(ev.date)
-              const img = getArtistImage(ev.artist)
-              return (
-                <div className="event" key={ev.id}>
-                  <div className="datecol">
-                    <div className="mon">{mon}</div>
-                    <div className="day">{day}</div>
-                  </div>
-                  <div className="event-main">
-                    {img ? <img className="event-avatar" src={img} alt={ev.artist} /> : <div className="event-avatar" />}
-                    <div className="event-lines">
-                      <div className="row1">{time ? `• ${time}` : ''}</div>
-                      <div className="row2">{ev.city}</div>
-                      <div className="row2">{ev.venue}</div>
-                      <div className="row3">{ev.artist}</div>
-                    </div>
-                  </div>
-                  <a className="chev" href={ev.url} target="_blank" rel="noreferrer">›</a>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* CONTROLS */}
-      <div className="card" style={{marginTop:16}}>
         <h2>Location</h2>
         <div className="row" style={{marginBottom:8}}>
           <input
@@ -221,6 +182,7 @@ export default function Home(){
         </div>
       </div>
 
+      {/* SOURCE & SEARCH (top) */}
       <div className="card" style={{marginTop:16}}>
         <h2>Source & Search</h2>
         <div className="row">
@@ -249,12 +211,45 @@ export default function Home(){
         {error && <p className="small" style={{color:'#ff7b7b', marginTop:8}}>{error}</p>}
       </div>
 
-      {/* ARTISTS BELOW RESULTS */}
+      {/* RESULTS (now below the controls) */}
+      <div className="card" style={{marginTop:16}}>
+        <h2>Results</h2>
+        {events.length === 0 ? (
+          <p className="small">No results yet. Use the controls above to search.</p>
+        ) : (
+          <div className="eventlist">
+            {events.map(ev => {
+              const { mon, day, time } = parseDateParts(ev.date)
+              const img = getArtistImage(ev.artist)
+              return (
+                <div className="event" key={ev.id}>
+                  <div className="datecol">
+                    <div className="mon">{mon}</div>
+                    <div className="day">{day}</div>
+                  </div>
+                  <div className="event-main">
+                    {img ? <img className="event-avatar" src={img} alt={ev.artist} /> : <div className="event-avatar" />}
+                    <div className="event-lines">
+                      <div className="row1">{time ? `Sun • ${time}` : ''}</div>
+                      <div className="row2">{ev.city}</div>
+                      <div className="row2">{ev.venue}</div>
+                      <div className="row3">{ev.artist}</div>
+                    </div>
+                  </div>
+                  <a className="chev" href={ev.url} target="_blank" rel="noreferrer">›</a>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ARTISTS (below results) */}
       <div className="grid" style={{marginTop:16}}>
         <div className="card">
-          <h2>Selected Artists (preview)</h2>
+          <h2>Selected Artists</h2>
           {artists.length === 0
-            ? <p className="small">No artists loaded yet (they’ll load automatically when you search).</p>
+            ? <p className="small">Artists will load automatically when you search.</p>
             : (
               <ul className="clean">
                 {artists.map(a => (
@@ -284,7 +279,6 @@ export default function Home(){
       </div>
 
       <hr />
-      <p className="small">Prototype only. No database; events via Ticketmaster Discovery API.</p>
       <footer>© 2025 Superfan</footer>
     </div>
   )
