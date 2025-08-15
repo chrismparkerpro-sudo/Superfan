@@ -1,7 +1,7 @@
-module.exports = function handler(req, res){
+export default function handler(req, res) {
   res.status(200).json({
     SPOTIFY_CLIENT_ID: !!process.env.SPOTIFY_CLIENT_ID,
     SPOTIFY_CLIENT_SECRET: !!process.env.SPOTIFY_CLIENT_SECRET,
-    SPOTIFY_REDIRECT_URI: process.env.SPOTIFY_REDIRECT_URI || null
-  })
+    SPOTIFY_REDIRECT_URI: process.env.SPOTIFY_REDIRECT_URI || null,
+  });
 }
