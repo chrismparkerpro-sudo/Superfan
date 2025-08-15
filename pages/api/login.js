@@ -1,3 +1,4 @@
+// pages/api/login.js
 export default function handler(req, res) {
   try {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -15,11 +16,17 @@ export default function handler(req, res) {
       });
     }
 
+    // 👇 add user-top-read (keep user-follow-read for your existing flow)
+    const scope = [
+      'user-follow-read',
+      'user-top-read'
+    ].join(' ');
+
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
-      redirect_uri: redirectUri, // must exactly match Spotify app settings
-      scope: 'user-follow-read',
+      redirect_uri: redirectUri,
+      scope,
       state: Math.random().toString(36).slice(2),
       show_dialog: 'true',
     });
