@@ -11,9 +11,9 @@ export default function Home(){
   const [connected, setConnected] = useState(false)
 
   // Location inputs
-  const [locationText, setLocationText] = useState('Chicago, IL') // free text (city, postal code, etc.)
-  const [radius, setRadius] = useState(25) // miles
-  const [coords, setCoords] = useState(null) // { lat, lon } when using current location
+  const [locationText, setLocationText] = useState('Chicago, IL')
+  const [radius, setRadius] = useState(25)
+  const [coords, setCoords] = useState(null) // { lat, lon }
 
   // Source + options
   const [source, setSource] = useState('followed') // followed | top_artists | top_tracks
@@ -39,40 +39,57 @@ export default function Home(){
 
   const connectSpotify = () => window.location.href = '/api/login'
 
-  // Get current browser location
+  // Utilities
+  const monthShort = (n) => ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][n] || ''
+  const parseDateParts = (s) => {
+    // expects "YYYY-MM-DD" or "YYYY-MM-DD HH:mm:ss"
+    if (!s) return { mon:'', day:'', time:'' }
+    const [d, t] = s.split(' ')
+    const [y,m,dd] = d.split('-').map(x=>parseInt(x,10))
+    const mon = isFinite(m) ? monthShort(m-1) : ''
+    const day = dd || ''
+    const time = t ? t.slice(0,5) : '' // HH:mm
+    return { mon, day, time }
+  }
+  const getArtistImage = (name) => {
+    const fromA = artists.find(a => a.name?.toLowerCase() === name?.toLowerCase())
+    if (fromA?.image) return fromA.image
+    const fromR = recommended.find(a => a.name?.toLowerCase() === name?.toLowerCase())
+    if (fromR?.image) return fromR.image
+    return null
+  }
+
+  // Geolocation
   const useCurrentLocation = () => {
     if (!('geolocation' in navigator)) {
-      setError('Geolocation is not supported by your browser.')
+      setError('Geolocation not supported by this browser.')
       return
     }
-    setLocBusy(true)
-    setError('')
+    setLocBusy(true); setError('')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords
         setCoords({ lat: Number(latitude.toFixed(6)), lon: Number(longitude.toFixed(6)) })
         setLocBusy(false)
       },
-      (err) => {
-        setLocBusy(false)
-        setError(`Could not get current location: ${err.message}`)
-      },
+      (err) => { setLocBusy(false); setError(`Could not get current location: ${err.message}`) },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     )
   }
 
+  // Data loaders
   const loadArtistsForSource = async () => {
     const endpoint =
       source === 'followed'
         ? '/api/followed'
         : `/api/top?type=${source === 'top_artists' ? 'artists' : 'tracks'}&time_range=${timeRange}&limit=50`
-
     const r = await fetch(endpoint)
     if (r.status === 401) throw new Error('Please connect Spotify first.')
     const data = await r.json()
     return (data.items || []).slice(0, 100)
   }
 
+  // Unified “one-click” search
   const oneClickFind = async () => {
     try {
       setBusy(true)
@@ -88,12 +105,12 @@ export default function Home(){
       }
       if (current.length === 0) throw new Error('No artists available.')
 
-      // Build location payload: prefer coords if set; else use text
+      // Build location payload
       const locationPayload = coords
         ? { lat: coords.lat, lon: coords.lon, radius: Number(radius) || 25 }
         : { locationText: locationText.trim(), radius: Number(radius) || 25 }
 
-      // 2) Ticketmaster search for current artists
+      // 2) Ticketmaster for current artists
       const baseRes = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
@@ -127,6 +144,7 @@ export default function Home(){
     }
   }
 
+  // --- UI ---
   return (
     <div className="container">
       <div className="header">
@@ -138,7 +156,41 @@ export default function Home(){
         </div>
       </div>
 
+      {/* RESULTS FIRST */}
       <div className="card">
+        <h2>Results</h2>
+        {events.length === 0 ? (
+          <p className="small">No results yet. Use the controls below to search.</p>
+        ) : (
+          <div className="eventlist">
+            {events.map(ev => {
+              const { mon, day, time } = parseDateParts(ev.date)
+              const img = getArtistImage(ev.artist)
+              return (
+                <div className="event" key={ev.id}>
+                  <div className="datecol">
+                    <div className="mon">{mon}</div>
+                    <div className="day">{day}</div>
+                  </div>
+                  <div className="event-main">
+                    {img ? <img className="event-avatar" src={img} alt={ev.artist} /> : <div className="event-avatar" />}
+                    <div className="event-lines">
+                      <div className="row1">{time ? `• ${time}` : ''}</div>
+                      <div className="row2">{ev.city}</div>
+                      <div className="row2">{ev.venue}</div>
+                      <div className="row3">{ev.artist}</div>
+                    </div>
+                  </div>
+                  <a className="chev" href={ev.url} target="_blank" rel="noreferrer">›</a>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* CONTROLS */}
+      <div className="card" style={{marginTop:16}}>
         <h2>Location</h2>
         <div className="row" style={{marginBottom:8}}>
           <input
@@ -146,7 +198,7 @@ export default function Home(){
             style={{minWidth:260}}
             placeholder="City, State or Postal Code (e.g., Chicago, IL or 60607)"
             value={locationText}
-            onChange={e=>setLocationText(e.target.value)}
+            onChange={e=>{ setLocationText(e.target.value); setCoords(null); }}
             disabled={!!coords}
           />
           <input
@@ -167,14 +219,10 @@ export default function Home(){
             <span className="small">Using GPS: {coords.lat.toFixed(3)}, {coords.lon.toFixed(3)}</span>
           )}
         </div>
-        <p className="small">
-          Tip: If you enable “Use My Current Location”, we’ll search within {radius} miles of your GPS position.
-          Otherwise we’ll search around your typed place.
-        </p>
       </div>
 
       <div className="card" style={{marginTop:16}}>
-        <h2>Source</h2>
+        <h2>Source & Search</h2>
         <div className="row">
           <select value={source} onChange={e=>setSource(e.target.value)}>
             <option value="followed">Followed Artists</option>
@@ -194,26 +242,15 @@ export default function Home(){
             />
             Include similar artists
           </label>
+          <button className="btn" onClick={oneClickFind} disabled={busy}>
+            {busy ? 'Finding…' : 'Find Shows'}
+          </button>
         </div>
+        {error && <p className="small" style={{color:'#ff7b7b', marginTop:8}}>{error}</p>}
       </div>
 
+      {/* ARTISTS BELOW RESULTS */}
       <div className="grid" style={{marginTop:16}}>
-        <div className="card">
-          <h2>Action</h2>
-          <p className="small">
-            {source === 'followed'
-              ? <>We’ll use your <strong>followed artists</strong> (scope: <code>user-follow-read</code>).</>
-              : <>We’ll use your <strong>listening history</strong> (scope: <code>user-top-read</code>) to derive artists.</>
-            }
-          </p>
-          <div className="row" style={{marginTop:8}}>
-            <button className="btn" onClick={oneClickFind} disabled={busy}>
-              {busy ? 'Finding…' : `Find Shows`}
-            </button>
-          </div>
-          {error && <p className="small" style={{color:'#ff7b7b', marginTop:8}}>{error}</p>}
-        </div>
-
         <div className="card">
           <h2>Selected Artists (preview)</h2>
           {artists.length === 0
@@ -244,40 +281,6 @@ export default function Home(){
             </>
           )}
         </div>
-      </div>
-
-      <div className="card" style={{marginTop:16}}>
-        <h2>Results</h2>
-        {events.length === 0 ? (
-          <p className="small">No results yet.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Artist</th>
-                <th>Date</th>
-                <th>Venue</th>
-                <th>City</th>
-                <th>Tickets</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map(ev => (
-                <tr key={ev.id}>
-                  <td>{ev.artist}</td>
-                  <td>{ev.date}</td>
-                  <td>{ev.venue}</td>
-                  <td>{ev.city}</td>
-                  <td>
-                    <a className="btn secondary" href={ev.url} target="_blank" rel="noreferrer">
-                      View
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
 
       <hr />
