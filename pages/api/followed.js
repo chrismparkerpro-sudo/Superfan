@@ -1,4 +1,3 @@
-// pages/api/followed.js
 import cookie from 'cookie';
 
 export default async function handler(req, res) {
