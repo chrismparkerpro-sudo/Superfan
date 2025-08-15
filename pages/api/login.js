@@ -1,4 +1,3 @@
-// pages/api/login.js
 export default function handler(req, res) {
   try {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -16,7 +15,7 @@ export default function handler(req, res) {
       });
     }
 
-    // 👇 add user-top-read (keep user-follow-read for your existing flow)
+    // Request follow + top data
     const scope = [
       'user-follow-read',
       'user-top-read'
